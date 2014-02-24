@@ -35,9 +35,15 @@ malformed(Body, ReqData, State) ->
 
 is_authorized(ReqData, State=#state{params=Params}) ->
     Path = wrq:path(ReqData),
-    case oauth_utils:verify(Params, ?REALM, Path, fun consumer_lookup/1) of
-        ok             -> {true, ReqData, State};
-        {error, Error} -> unauthorized(Error, ReqData, State)
+    {_, ConsumerKey} = lists:keyfind("oauth_consumer_key", 1, Params),
+    case consumer_lookup(ConsumerKey) of
+        {error, not_found} -> 
+            unauthorized("oauth_consumer_key invalid", ReqData, State);
+        {ok, ConsumerSecret} ->
+            case oauth_utils:verify(?REALM, Path, Params, ConsumerSecret) of
+                ok             -> {true, ReqData, State};
+                {error, Error} -> unauthorized(Error, ReqData, State)
+            end
     end.
 
 
