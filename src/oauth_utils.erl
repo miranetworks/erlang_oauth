@@ -27,8 +27,8 @@ init() ->
 
 %%
 %% @doc Verify an oauth 1.0 request by checking the nonce and signature.
-%% See verify_nonce/4 and verify_signature/4
 %%
+%% See verify_nonce/4 and verify_signature/4
 %%
 -spec verify(string(), string(), params_t(), string()) -> ok | {error, string()}.
 
