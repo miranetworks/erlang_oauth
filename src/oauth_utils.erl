@@ -59,7 +59,7 @@ verify_nonce(_Realm, _Path, Params, _ConsumerSecret) ->
 verify_signature(Realm, Path, Params, ConsumerSecret) ->
     {_, ConsumerKey} = lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params),
     {value, {_, Signature}, OtherParams} = lists:keytake(?SIGNATURE_PARAM, 1, Params),
-    Url = string:concat(Realm, Path),
+    Url = Realm ++ Path,
     Consumer = {ConsumerKey, ConsumerSecret, hmac_sha1},
     case oauth:verify(Signature, "GET", Url, OtherParams, Consumer, "") of
         true  -> ok;
