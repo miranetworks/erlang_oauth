@@ -3,6 +3,7 @@
 -export([
          init/0,
          check_params/1,
+         get_consumer_key/1,
 
          verify/4,
          verify_nonce/4,
@@ -65,6 +66,16 @@ verify_signature(Realm, Path, Params, ConsumerSecret) ->
         false -> {error, "oauth_signature invalid"}
     end.
 
+%%
+%% @doc Extract the consumer key from the query string parameters
+%%
+-spec get_consumer_key(params_t()) -> false | string().
+
+get_consumer_key(Params) ->
+    case lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params) of
+        false -> false;
+        {_, Value} -> Value
+    end.
 
 %%
 %% @doc Check that the required parameters are present with their expected values.
