@@ -1,9 +1,9 @@
 %% @author author <author@example.com>
 %% @copyright YYYY author.
 
-%% @doc Supervisor for the erlang_oauth_2legged application.
+%% @doc Supervisor for the erlang_oauth application.
 
--module(erlang_oauth_2legged_sup).
+-module(erlang_oauth_sup).
 -author('author <author@example.com>').
 
 -behaviour(supervisor).

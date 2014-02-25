@@ -1,4 +1,4 @@
--module(erlang_oauth_2legged_resource).
+-module(erlang_oauth_resource).
 
 -export([
          init/1, 

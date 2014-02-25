@@ -22,11 +22,11 @@ two_legged_test_() ->
 
 
 start() ->
-    ok = erlang_oauth_2legged:start().
+    ok = erlang_oauth:start().
  
 
 stop(_) ->
-    ok = erlang_oauth_2legged:stop().
+    ok = erlang_oauth:stop().
  
 
 http_get(Url) ->

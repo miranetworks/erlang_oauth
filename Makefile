@@ -1,5 +1,5 @@
 ERL ?= erl
-APP := erlang_oauth_2legged
+APP := erlang_oauth
 
 .PHONY: deps test
 
