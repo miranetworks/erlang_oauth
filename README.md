@@ -9,10 +9,26 @@ It also provides a utility module `oauth_utils.erl` for easy integration in othe
 Code examples
 =============
 
-Python 2.7
+Erlang
+------
+Using [erlang-oauth](https://github.com/tim/erlang-oauth):
+```erlang
+ConsumerKey = "key".
+ConsumerSecret = "secret".
+BaseUrl = "http://host:port/path".
+Params = [{"foo","bar"}].
+
+% Sign the request
+SignedParams = oauth:sign("GET", BaseUrl, Params, {ConsumerKey, ConsumerSecret, hmac_sha1}, "", "").
+SignedUrl = oauth:uri(BaseUrl, SignedParams).
+
+% Hit the server
+httpc:request(SignedUrl).
+```
+
+Python 2.x
 ----------
 Using [oauthlib](https://github.com/idan/oauthlib):
-
 ```python
 import oauthlib.oauth1
 import urllib2
@@ -34,7 +50,6 @@ print urllib2.urlopen(signed_url).read()
 Perl
 ----
 Using [Net::OAuth](https://github.com/keeth/Net-OAuth):
-
 ```perl
 use Net::OAuth;
 use LWP::Simple;
