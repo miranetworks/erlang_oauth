@@ -13,7 +13,7 @@
 %% @spec start(_Type, _StartArgs) -> ServerRet
 %% @doc application start callback for erlang_oauth.
 start(_Type, _StartArgs) ->
-    ok = oauth_utils:init(),
+    ok = oauth_utils:init(15*60),
     erlang_oauth_sup:start_link().
 
 %% @spec stop(_State) -> ServerRet

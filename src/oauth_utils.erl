@@ -1,14 +1,18 @@
 -module(oauth_utils).
 
 -export([
-         init/0,
+         init/1,
          check_params/1,
          get_consumer_key/1,
 
          verify/4,
          verify_nonce/4,
-         verify_signature/4
+         verify_signature/4,
+
+         nonce_expire/1
         ]).
+
+-include_lib("stdlib/include/ms_transform.hrl").
 
 %% OAuth parameters
 -define(CONSUMER_KEY_PARAM, "oauth_consumer_key").
@@ -18,11 +22,14 @@
 -define(NONCE_PARAM, "oauth_nonce").
 -define(VERSION_PARAM, "oauth_version").
 
+-define(NONCE_EXPIRE_INTERVAL_MS, 30000).
+
 -type params_t() :: [{string(), string()}].
 
--spec init() -> ok.
-init() ->
+-spec init(pos_integer()) -> ok.
+init(NonceRetentionSecs) ->
     oauth_nonce = ets:new(oauth_nonce, [set, public, named_table]),
+    {ok, _} = timer:apply_interval(?NONCE_EXPIRE_INTERVAL_MS, ?MODULE, nonce_expire, [NonceRetentionSecs]),
     ok.
 
 
@@ -136,4 +143,14 @@ nonce_insert(Nonce) when is_list(Nonce) ->
     nonce_insert(list_to_binary(Nonce));
 
 nonce_insert(Nonce) when is_binary(Nonce) ->
-    ets:insert_new(oauth_nonce, {Nonce}).
+    ets:insert_new(oauth_nonce, {Nonce, unixtime()}).
+
+
+nonce_expire(Retention) ->
+    Now = unixtime(),
+    ets:select_delete(oauth_nonce, ets:fun2ms(fun({_,Timestamp}) when Timestamp < Now-Retention -> true end)).
+
+
+unixtime() ->
+    {Mega, Secs, _} = os:timestamp(),
+    Mega*1000000 + Secs.
