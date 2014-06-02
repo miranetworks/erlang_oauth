@@ -5,7 +5,7 @@
 
          is_authorized/6,
 
-         header_params/1,
+         get_header_params/1,
          check_params/1,
          get_consumer_key/1,
 
@@ -26,7 +26,7 @@
 -define(NONCE_PARAM, "oauth_nonce").
 -define(VERSION_PARAM, "oauth_version").
 
--define(NONCE_EXPIRE_INTERVAL_MS, 30000).
+-define(NONCE_EXPIRE_INTERVAL_MS, 60000).
 
 -type params_t() :: [{string(), string()}].
 
@@ -50,7 +50,7 @@ init(NonceRetentionSecs) ->
 %-spec
 
 is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFun) ->
-    Params = QueryParams ++ header_params(AuthHeader),
+    Params = QueryParams ++ get_header_params(AuthHeader),
     case check_params(Params) of
         ok -> 
             ConsumerKey = get_consumer_key(Params),
@@ -67,14 +67,14 @@ is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFu
 %%
 %-spec
 
-header_params(String) when is_list(String) ->
+get_header_params(String) when is_list(String) ->
     Suffix = re:replace(String, "^oauth\\s+", "", [caseless, {return,list}]),
     Params = oauth:header_params_decode(Suffix),
     case lists:keytake("realm", 1, Params) of
         {value, _, OtherParams} -> OtherParams;
         false                   -> Params
     end;
-header_params(_) -> [].
+get_header_params(_) -> [].
 
 
 %%
@@ -93,7 +93,7 @@ check_params(Params) ->
 
 get_consumer_key(Params) ->
     case lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params) of
-        false -> false;
+        false      -> false;
         {_, Value} -> Value
     end.
 
@@ -107,7 +107,7 @@ get_consumer_key(Params) ->
 
 verify(Method, Realm, Path, Params, ConsumerSecret) ->
     case verify_nonce(Params) of
-        ok -> verify_signature(Method, Realm, Path, Params, ConsumerSecret);
+        ok    -> verify_signature(Method, Realm, Path, Params, ConsumerSecret);
         Error -> Error
     end.
 
@@ -146,7 +146,7 @@ verify_signature(Method, Realm, Path, Params, ConsumerSecret) ->
 %%
 
 check_params(missing, Params) ->
-    case check_required_params(Params) of
+    case check_required_params(Params, required_params()) of
         ok    -> check_params(version, Params);
         Error -> Error
     end;
@@ -160,15 +160,9 @@ check_params(version, Params) ->
 
 check_params(signature, Params) ->
     case lists:keyfind(?SIGNATURE_METHOD_PARAM, 1, Params) of
-        {_, "HMAC-SHA1"} -> check_params(done, Params);
+        {_, "HMAC-SHA1"} -> ok;
         _                -> {error, "oauth_signature_method must be HMAC-SHA1"}
-    end;
-
-check_params(done, _) -> ok.
-
-
-check_required_params(Params) -> 
-    check_required_params(Params, required_params()).
+    end.
 
 
 check_required_params(_, []) -> ok;

@@ -2,17 +2,12 @@
 {application, erlang_oauth,
  [
   {description, "erlang_oauth"},
-  {vsn, "1"},
+  {vsn, "0.1.0"},
   {modules, []},
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib,
-                  inets,
-                  crypto,
-                  mochiweb,
-                  webmachine
+                  stdlib
                  ]},
-  {mod, { erlang_oauth_app, []}},
   {env, []}
  ]}.
