@@ -1,9 +1,8 @@
--module(webmachine_tests).
+-module(mochiweb_tests).
 
 -compile(export_all).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("webmachine/include/webmachine.hrl").
 
 
 main_test_() ->
@@ -19,19 +18,18 @@ main_test_() ->
 setup() ->
     error_logger:tty(false),
     {ok, _} = application:ensure_all_started(inets),
-    {ok, _} = application:ensure_all_started(webmachine),
-    {ok, _} = webmachine_mochiweb:start([{name, test},
-                                         {ip, "127.0.0.1"},
-                                         {port, 8000},
-                                         {log_dir, "."},
-                                         {dispatch, [{['*'], ?MODULE, []}]}]),
+    {ok, _} = application:ensure_all_started(mochiweb),
+    {ok, _} = mochiweb_http:start([{name, test}, 
+                                   {ip, {127,0,0,1}}, 
+                                   {port, 8000},
+                                   {loop, fun loop/1}]),
     ok = oauth_utils:init().
 
 
 teardown(_) ->
     ets:delete(oauth_nonce),
-    ok = webmachine_mochiweb:stop(test_mochiweb),
-    ok = application:stop(webmachine),
+    ok = mochiweb_http:stop(test),
+    ok = application:stop(mochiweb),
     ok = application:stop(inets).
 
 
@@ -62,39 +60,30 @@ post(_) ->
 -define(REALM, "http://localhost:8000").
 
 
-init([]) ->
-    {ok, []}.
+loop(Req) ->
+    Method = Req:get(method),
+    Path = Req:get(path),
+    QueryParams = Req:parse_qs(),
+    AuthHeader = Req:get_header_value("Authorization"),
+    try
+        case oauth_utils:is_authorized(Method, ?REALM, Path, QueryParams, AuthHeader, fun consumer_lookup/1) of
+            ok ->
+                case Method of
+                    'GET' ->
+                        Req:respond({200, [{"Content-Type", "text/plain"}], "hello"});
+                    'POST' ->
+                        Req:respond({200, [{"Content-Type", "text/plain"}], "bla"});
+                    _ ->
+                        Req:respond({501, [], []})
+                end;
 
-
-allowed_methods(ReqData, State) ->
-    {['GET', 'POST'], ReqData, State}.
-
-
-is_authorized(ReqData, State) ->
-    Method = wrq:method(ReqData),
-    Path = wrq:path(ReqData),
-    QueryParams = wrq:req_qs(ReqData),
-    AuthHeader = wrq:get_req_header("Authorization", ReqData),
-    case oauth_utils:is_authorized(Method, ?REALM, Path, QueryParams, AuthHeader, fun consumer_lookup/1) of
-        ok              -> {true, ReqData, State};
-        {error, Reason} -> unauthorized(Reason, ReqData, State)
+            {error, Reason} ->
+                Req:respond({401, [{"WWW-Authenticate", "OAuth realm=\"" ?REALM "\""},
+                                   {"Content-Type", "text/plain"}], Reason})
+        end
+    catch
+        _ -> handle_this
     end.
-
-
-unauthorized(Body, ReqData, State) ->
-    {"OAuth realm=\"" ?REALM "\"", wrq:set_resp_header("Content-Type", "text/plain", wrq:set_resp_body(Body, ReqData)), State}.
-
-
-content_types_provided(ReqData, State) ->
-    {[{"text/plain", to_text}], ReqData, State}.
-
-
-to_text(ReqData, State) ->
-    {"hello", ReqData, State}.
-
-
-process_post(ReqData, State) ->
-    {true, wrq:set_resp_header("Content-Type", "text/plain", wrq:set_resp_body("bla", ReqData)), State}.
 
 
 consumer_lookup("key") -> {ok, "secret"};

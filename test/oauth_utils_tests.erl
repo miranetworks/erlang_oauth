@@ -12,25 +12,18 @@ main_test_() ->
       fun get_header_params/1,
       fun check_params/1,
       fun get_consumer_key/1,
-      fun verify/1
-      %fun nonce_expire/1  % FIXME
+      fun verify/1,
+      fun nonce_expire/1
      ]}.
 
 
 setup() ->
     error_logger:tty(false),
-    SetupPid = self(),
-    Pid = spawn(fun() -> 
-                        ok = oauth_utils:init(15*60),
-                        SetupPid ! initialized,
-                        timer:sleep(infinity)
-                end),
-    receive initialized -> ok end,
-    Pid.
+    ok = oauth_utils:init(1, 500).
 
 
-teardown(NonceOwner) ->
-    exit(NonceOwner, kill).
+teardown(_) ->
+    ets:delete(oauth_nonce).
 
 
 is_authorized(_) ->
@@ -96,6 +89,18 @@ verify(_) ->
      ?_assertEqual(ok, Result2),
      ?_assertEqual({error, "oauth_nonce has been used"}, Result3),
      ?_assertEqual({error, "oauth_signature invalid"}, Result4)
+    ].
+
+
+nonce_expire(_) ->
+     Result1 = oauth_utils:verify_nonce([{"oauth_nonce","a"}]),
+     Result2 = oauth_utils:verify_nonce([{"oauth_nonce","a"}]),
+     timer:sleep(2000),
+     Result3 = oauth_utils:verify_nonce([{"oauth_nonce","a"}]),
+    [
+     ?_assertEqual(ok, Result1),
+     ?_assertEqual({error, "oauth_nonce has been used"}, Result2),
+     ?_assertEqual(ok, Result3)
     ].
 
 

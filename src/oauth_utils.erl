@@ -1,7 +1,7 @@
 -module(oauth_utils).
 
 -export([
-         init/1,
+         init/0, init/1, init/2,
 
          is_authorized/6,
 
@@ -26,7 +26,8 @@
 -define(NONCE_PARAM, "oauth_nonce").
 -define(VERSION_PARAM, "oauth_version").
 
--define(NONCE_EXPIRE_INTERVAL_MS, 60000).
+-define(NONCE_RETENTION_PERIOD_SECS, 15*60).  % remember nonce values by default for 15 minutes
+-define(NONCE_EXPIRE_INTERVAL_MS, 60000).     % remove expired nonce values by default every minute
 
 -type params_t() :: [{string(), string()}].
 
@@ -34,13 +35,35 @@
 %%
 %% @doc Initialize nonce storage and cleanup.
 %%
-%% Call this from your application callback module.
+%% Call one of init/{0-2} from your application callback module.
+%%
+-spec init() -> ok.
+
+init() ->
+    init(?NONCE_RETENTION_PERIOD_SECS, ?NONCE_EXPIRE_INTERVAL_MS).
+
+
+%%
+%% @doc Initialize nonce storage and cleanup.
+%%
+%% Call one of init/{0-2} from your application callback module.
 %%
 -spec init(pos_integer()) -> ok.
 
-init(NonceRetentionSecs) ->
+init(NonceRetentionPeriodSecs) ->
+    init(NonceRetentionPeriodSecs, ?NONCE_EXPIRE_INTERVAL_MS).
+
+
+%%
+%% @doc Initialize nonce storage and cleanup.
+%%
+%% Call one of init/{0-2} from your application callback module.
+%%
+-spec init(pos_integer(), pos_integer()) -> ok.
+
+init(NonceRetentionPeriodSecs, NonceExireIntervalMs) ->
     oauth_nonce = ets:new(oauth_nonce, [set, public, named_table]),
-    {ok, _} = timer:apply_interval(?NONCE_EXPIRE_INTERVAL_MS, ?MODULE, nonce_expire, [NonceRetentionSecs]),
+    {ok, _} = timer:apply_interval(NonceExireIntervalMs, ?MODULE, nonce_expire, [NonceRetentionPeriodSecs]),
     ok.
 
 
