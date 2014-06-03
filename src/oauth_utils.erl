@@ -68,9 +68,11 @@ init(NonceRetentionPeriodSecs, NonceExireIntervalMs) ->
 
 
 %%
-%% @doc FIXME
+%% @doc Convenience fun that takes care of everything: param checking, consumer lookup and verification.
 %%
-%-spec
+%% The last argument is a fun that has the same return semantics as dict:find/2.
+%%
+-spec is_authorized(atom(), string(), string(), params_t(), string(), fun((string()) -> {ok,string()}|error)) -> ok | {error, string()}.
 
 is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFun) ->
     Params = QueryParams ++ get_header_params(AuthHeader),
@@ -86,9 +88,10 @@ is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFu
 
 
 %%
-%% @doc FIXME
+%% @doc Parses a HTTP Authorization header into a list of params.
 %%
-%-spec
+-spec get_header_params(string()) -> params_t();
+                       (any()) -> [].
 
 get_header_params(String) when is_list(String) ->
     Suffix = re:replace(String, "^oauth\\s+", "", [caseless, {return,list}]),
