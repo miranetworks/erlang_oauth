@@ -1,20 +1,30 @@
 -module(oauth_utils).
 
+% Main interface
 -export([
-         init/1,
+         init/0, init/1, init/2,
+         is_authorized/6
+        ]).
+
+% Utility funs
+-export([
+         get_header_params/1,
          check_params/1,
          get_consumer_key/1,
 
-         verify/4,
-         verify_nonce/4,
-         verify_signature/4,
+         verify/5,
+         verify_nonce/1,
+         verify_signature/5
+        ]).
 
+% Called by timer module
+-export([
          nonce_expire/1
         ]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
-%% OAuth parameters
+% OAuth parameters
 -define(CONSUMER_KEY_PARAM, "oauth_consumer_key").
 -define(SIGNATURE_METHOD_PARAM, "oauth_signature_method").
 -define(SIGNATURE_PARAM, "oauth_signature").
@@ -22,67 +32,88 @@
 -define(NONCE_PARAM, "oauth_nonce").
 -define(VERSION_PARAM, "oauth_version").
 
--define(NONCE_EXPIRE_INTERVAL_MS, 30000).
+-define(NONCE_RETENTION_PERIOD_SECS, 15*60).  % remember nonce values by default for 15 minutes
+-define(NONCE_EXPIRE_INTERVAL_MS, 60000).     % remove expired nonce values by default every minute
 
 -type params_t() :: [{string(), string()}].
 
+
+%%
+%% @doc Initialize nonce storage and cleanup.
+%%
+%% Call one of init/{0-2} from your application callback module.
+%%
+-spec init() -> ok.
+
+init() ->
+    init(?NONCE_RETENTION_PERIOD_SECS, ?NONCE_EXPIRE_INTERVAL_MS).
+
+
+%%
+%% @doc Initialize nonce storage and cleanup.
+%%
+%% Call one of init/{0-2} from your application callback module.
+%%
 -spec init(pos_integer()) -> ok.
-init(NonceRetentionSecs) ->
+
+init(NonceRetentionPeriodSecs) ->
+    init(NonceRetentionPeriodSecs, ?NONCE_EXPIRE_INTERVAL_MS).
+
+
+%%
+%% @doc Initialize nonce storage and cleanup.
+%%
+%% Call one of init/{0-2} from your application callback module.
+%%
+-spec init(pos_integer(), pos_integer()) -> ok.
+
+init(NonceRetentionPeriodSecs, NonceExpireIntervalMs) ->
     oauth_nonce = ets:new(oauth_nonce, [set, public, named_table]),
-    {ok, _} = timer:apply_interval(?NONCE_EXPIRE_INTERVAL_MS, ?MODULE, nonce_expire, [NonceRetentionSecs]),
+    {ok, _} = timer:apply_interval(NonceExpireIntervalMs, ?MODULE, nonce_expire, [NonceRetentionPeriodSecs]),
     ok.
 
 
 %%
-%% @doc Verify an oauth 1.0 request by checking the nonce and signature.
+%% @doc Convenience fun that takes care of everything: param checking, consumer lookup and verification.
 %%
-%% See verify_nonce/4 and verify_signature/4
-%%
--spec verify(string(), string(), params_t(), string()) -> ok | {error, string()}.
+-spec is_authorized(atom(), string(), string(), params_t(), string(), fun((string()) -> {ok,string()}|error)) -> ok | {error, string()};
+                   (atom(), string(), string(), params_t(), string(), string())                               -> ok | {error, string()}.
 
-verify(Realm, Path, Params, ConsumerSecret) ->
-    case verify_nonce(Realm, Path, Params, ConsumerSecret) of
-        ok -> verify_signature(Realm, Path, Params, ConsumerSecret);
+is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFun) when is_function(FindConsumerSecretFun) ->
+    Params = QueryParams ++ get_header_params(AuthHeader),
+    case check_params(Params) of
+        ok -> 
+            ConsumerKey = get_consumer_key(Params),
+            case FindConsumerSecretFun(ConsumerKey) of
+                {ok, ConsumerSecret} -> verify(Method, Realm, Path, Params, ConsumerSecret);
+                error                -> {error, "oauth_consumer_key invalid"}
+            end;
+        Error -> Error
+    end;
+
+is_authorized(Method, Realm, Path, QueryParams, AuthHeader, ConsumerSecret) when is_list(ConsumerSecret) ->
+    Params = QueryParams ++ get_header_params(AuthHeader),
+    case check_params(Params) of
+        ok    -> verify(Method, Realm, Path, Params, ConsumerSecret);
         Error -> Error
     end.
 
-%%
-%% @doc Check that the nonce of an oauth 1.0 request have not been used before.
-%%
--spec verify_nonce(string(), string(), params_t(), string()) -> ok | {error, string()}.
-
-verify_nonce(_Realm, _Path, Params, _ConsumerSecret) ->
-    {_, Nonce} = lists:keyfind(?NONCE_PARAM, 1, Params),
-    case nonce_insert(Nonce) of
-        true  -> ok;
-        false -> {error, "oauth_nonce has been used"}
-    end.
 
 %%
-%% @doc Verify the signature of an oauth 1.0 request
+%% @doc Parses a HTTP Authorization header into a list of params.
 %%
--spec verify_signature(string(), string(), params_t(), string()) -> ok | {error, string()}.
+-spec get_header_params(string()) -> params_t();
+                       (any()) -> [].
 
-verify_signature(Realm, Path, Params, ConsumerSecret) ->
-    {_, ConsumerKey} = lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params),
-    {value, {_, Signature}, OtherParams} = lists:keytake(?SIGNATURE_PARAM, 1, Params),
-    Url = Realm ++ Path,
-    Consumer = {ConsumerKey, ConsumerSecret, hmac_sha1},
-    case oauth:verify(Signature, "GET", Url, OtherParams, Consumer, "") of
-        true  -> ok;
-        false -> {error, "oauth_signature invalid"}
-    end.
+get_header_params(String) when is_list(String) ->
+    Suffix = re:replace(String, "^oauth\\s+", "", [caseless, {return,list}]),
+    Params = oauth:header_params_decode(Suffix),
+    case lists:keytake("realm", 1, Params) of
+        {value, _, OtherParams} -> OtherParams;
+        false                   -> Params
+    end;
+get_header_params(_) -> [].
 
-%%
-%% @doc Extract the consumer key from the query string parameters
-%%
--spec get_consumer_key(params_t()) -> false | string().
-
-get_consumer_key(Params) ->
-    case lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params) of
-        false -> false;
-        {_, Value} -> Value
-    end.
 
 %%
 %% @doc Check that the required parameters are present with their expected values.
@@ -93,10 +124,67 @@ check_params(Params) ->
     check_params(missing, Params).
 
 
-% Privates
+%%
+%% @doc Extract the consumer key from the query string parameters
+%%
+-spec get_consumer_key(params_t()) -> false | string().
+
+get_consumer_key(Params) ->
+    case lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params) of
+        false      -> false;
+        {_, Value} -> Value
+    end.
+
+
+%%
+%% @doc Verify an oauth 1.0 request by checking the nonce and signature.
+%%
+%% See verify_nonce/1 and verify_signature/5
+%%
+-spec verify(atom(), string(), string(), params_t(), string()) -> ok | {error, string()}.
+
+verify(Method, Realm, Path, Params, ConsumerSecret) ->
+    case verify_nonce(Params) of
+        ok    -> verify_signature(Method, Realm, Path, Params, ConsumerSecret);
+        Error -> Error
+    end.
+
+
+%%
+%% @doc Check that the nonce of an oauth 1.0 request have not been used before.
+%%
+-spec verify_nonce(params_t()) -> ok | {error, string()}.
+
+verify_nonce(Params) ->
+    {_, Nonce} = lists:keyfind(?NONCE_PARAM, 1, Params),
+    case nonce_insert(Nonce) of
+        true  -> ok;
+        false -> {error, "oauth_nonce has been used"}
+    end.
+
+
+%%
+%% @doc Verify the signature of an oauth 1.0 request
+%%
+-spec verify_signature(atom(), string(), string(), params_t(), string()) -> ok | {error, string()}.
+
+verify_signature(Method, Realm, Path, Params, ConsumerSecret) ->
+    {_, ConsumerKey} = lists:keyfind(?CONSUMER_KEY_PARAM, 1, Params),
+    {value, {_, Signature}, OtherParams} = lists:keytake(?SIGNATURE_PARAM, 1, Params),
+    Url = Realm ++ Path,
+    Consumer = {ConsumerKey, ConsumerSecret, hmac_sha1},
+    case oauth:verify(Signature, atom_to_list(Method), Url, OtherParams, Consumer, "") of
+        true  -> ok;
+        false -> {error, "oauth_signature invalid"}
+    end.
+
+
+%%
+%% Helper funs
+%%
 
 check_params(missing, Params) ->
-    case check_required_params(Params) of
+    case check_required_params(Params, required_params()) of
         ok    -> check_params(version, Params);
         Error -> Error
     end;
@@ -110,15 +198,9 @@ check_params(version, Params) ->
 
 check_params(signature, Params) ->
     case lists:keyfind(?SIGNATURE_METHOD_PARAM, 1, Params) of
-        {_, "HMAC-SHA1"} -> check_params(done, Params);
+        {_, "HMAC-SHA1"} -> ok;
         _                -> {error, "oauth_signature_method must be HMAC-SHA1"}
-    end;
-
-check_params(done, _) -> ok.
-
-
-check_required_params(Params) -> 
-    check_required_params(Params, required_params()).
+    end.
 
 
 check_required_params(_, []) -> ok;
@@ -128,6 +210,7 @@ check_required_params(Params, [Key | Rest]) ->
         false                 -> {error, Key ++ " must be specified"}
     end.
 
+
 required_params() -> 
     [
      ?CONSUMER_KEY_PARAM,
@@ -136,7 +219,6 @@ required_params() ->
      ?TIMESTAMP_PARAM,
      ?NONCE_PARAM
     ].
-
 
 
 nonce_insert(Nonce) when is_list(Nonce) ->
