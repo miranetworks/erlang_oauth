@@ -1,18 +1,24 @@
 -module(oauth_utils).
 
+% Main interface
 -export([
          init/0, init/1, init/2,
+         is_authorized/6
+        ]).
 
-         is_authorized/6,
-
+% Utility funs
+-export([
          get_header_params/1,
          check_params/1,
          get_consumer_key/1,
 
          verify/5,
          verify_nonce/1,
-         verify_signature/5,
+         verify_signature/5
+        ]).
 
+% Called by timer module
+-export([
          nonce_expire/1
         ]).
 
@@ -61,20 +67,19 @@ init(NonceRetentionPeriodSecs) ->
 %%
 -spec init(pos_integer(), pos_integer()) -> ok.
 
-init(NonceRetentionPeriodSecs, NonceExireIntervalMs) ->
+init(NonceRetentionPeriodSecs, NonceExpireIntervalMs) ->
     oauth_nonce = ets:new(oauth_nonce, [set, public, named_table]),
-    {ok, _} = timer:apply_interval(NonceExireIntervalMs, ?MODULE, nonce_expire, [NonceRetentionPeriodSecs]),
+    {ok, _} = timer:apply_interval(NonceExpireIntervalMs, ?MODULE, nonce_expire, [NonceRetentionPeriodSecs]),
     ok.
 
 
 %%
 %% @doc Convenience fun that takes care of everything: param checking, consumer lookup and verification.
 %%
-%% The last argument is a fun that has the same return semantics as dict:find/2.
-%%
--spec is_authorized(atom(), string(), string(), params_t(), string(), fun((string()) -> {ok,string()}|error)) -> ok | {error, string()}.
+-spec is_authorized(atom(), string(), string(), params_t(), string(), fun((string()) -> {ok,string()}|error)) -> ok | {error, string()};
+                   (atom(), string(), string(), params_t(), string(), string())                               -> ok | {error, string()}.
 
-is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFun) ->
+is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFun) when is_function(FindConsumerSecretFun) ->
     Params = QueryParams ++ get_header_params(AuthHeader),
     case check_params(Params) of
         ok -> 
@@ -83,6 +88,13 @@ is_authorized(Method, Realm, Path, QueryParams, AuthHeader, FindConsumerSecretFu
                 {ok, ConsumerSecret} -> verify(Method, Realm, Path, Params, ConsumerSecret);
                 error                -> {error, "oauth_consumer_key invalid"}
             end;
+        Error -> Error
+    end;
+
+is_authorized(Method, Realm, Path, QueryParams, AuthHeader, ConsumerSecret) when is_list(ConsumerSecret) ->
+    Params = QueryParams ++ get_header_params(AuthHeader),
+    case check_params(Params) of
+        ok    -> verify(Method, Realm, Path, Params, ConsumerSecret);
         Error -> Error
     end.
 
