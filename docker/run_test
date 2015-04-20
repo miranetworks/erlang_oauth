@@ -1,0 +1,4 @@
+#!/bin/bash
+WRKDIR=`readlink -f $(pwd)`
+docker logs -f $(docker run -d -u="developer" -p 20030:20030 --name erlang_oauth -v $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) -e SSH_AUTH_SOCK=$SSH_AUTH_SOCK -v $(pwd)/../:/workspace/base  erlang_oauth $1) | sed "s#\/workspace\/base#${WRKDIR}#"
+docker rm -f erlang_oauth

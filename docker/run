@@ -1,0 +1,2 @@
+#!/bin/bash
+docker run --rm=true -t -i -u="developer" -p 9090:9090 -p 9091:9091 --name erlang_oauth -v $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) -e SSH_AUTH_SOCK=$SSH_AUTH_SOCK -v $(pwd)/../:/workspace/base  erlang_oauth $1
